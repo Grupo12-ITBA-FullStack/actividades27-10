@@ -2,9 +2,7 @@ var express = require('express');
 var CategoriesRouter = express.Router();
 const Category = require('../models/Category');
 
-
 // Ruta para LEER todas las categorias
-// Método HTTP: GET
 // URL: /categorias
 CategoriesRouter.get('/categorias', async (req, res, next) => {
   try {
@@ -20,7 +18,6 @@ CategoriesRouter.get('/categorias', async (req, res, next) => {
 });
 
 // Ruta para LEER una categoria por su ID
-// Método HTTP: GET
 // URL: /categorias/:id (ej. /categorias/60a2b2c3d4e5f67890123456)
 CategoriesRouter.get('/categorias/:id', async (req, res, next) => {
   try {
@@ -29,14 +26,14 @@ CategoriesRouter.get('/categorias/:id', async (req, res, next) => {
  
     const categoria = await Category.findById(categoriaId);
  
-    // 3. Verificar si el usuario fue encontrado
+    // 3. Verificar si la categoria fue encontrado
     if (!categoria) {
       const error = new Error('Usuario no encontrado');
       error.status = 404;
       return next(error); 
     }
  
-    // 4. Enviar el usuario encontrado como respuesta JSON
+    // 4. Enviar la categoria encontrada como respuesta JSON
     res.status(200).json(usuario);
  
   } catch (error) {
@@ -48,7 +45,6 @@ CategoriesRouter.get('/categorias/:id', async (req, res, next) => {
 
 
 // Ruta para CREAR una nueva categoria
-// Método HTTP: POST
 // URL: /category
 CategoriesRouter.post('/categorias', async (req, res, next) => {
   try {
