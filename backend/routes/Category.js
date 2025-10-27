@@ -28,7 +28,7 @@ CategoriesRouter.get('/categorias/:id', async (req, res, next) => {
  
     // 3. Verificar si la categoria fue encontrado
     if (!categoria) {
-      const error = new Error('Usuario no encontrado');
+      const error = new Error('Categoria no encontrada');
       error.status = 404;
       return next(error); 
     }
@@ -37,7 +37,7 @@ CategoriesRouter.get('/categorias/:id', async (req, res, next) => {
     res.status(200).json(usuario);
  
   } catch (error) {
-    console.error('Error al buscar usuario por ID:', error.message);
+    console.error('Error al buscar categoria por ID:', error.message);
     error.status = 400;
     next(error);
   }
