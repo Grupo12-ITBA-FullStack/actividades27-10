@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const ProductsRouter = require('./routes/Product');
 const CategoriesRouter = require('./routes/Category');
 const app = express();
-const PORT = process.env.PORT || 3000;
+// const PORT = process.env.PORT || 3000;
  
 const DB_URI = 'mongodb+srv://agustinbarbero932_db_user:OAgv11ImjMA6EMSq@clustergrupo12.1wkkscq.mongodb.net/';
 
@@ -64,8 +64,9 @@ app.use((err, req, res, next) => {
 });
  
 // Iniciar el servidor Express
-app.listen(PORT, () => {
-  console.log(`Servidor Express escuchando en el puerto ${PORT}`);
-  console.log(`Accede desde tu navegador: http://localhost:${PORT}`);
-});
+// app.listen(PORT, () => {
+//   console.log(`Servidor Express escuchando en el puerto ${PORT}`);
+//   console.log(`Accede desde tu navegador: http://localhost:${PORT}`);
+// });
 
+module.exports = app;

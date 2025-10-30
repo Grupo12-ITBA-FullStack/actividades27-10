@@ -3,6 +3,7 @@ var ProductsRouter = express.Router();
 const Producto = require('../models/Product');
 const Category = require('../models/Category');
 
+// Middleware de validación
 const validateProduct = (req, res, next) => {
   const { name, description, price, sku, category } = req.body;
   const errors = [];
@@ -29,28 +30,71 @@ const validateProduct = (req, res, next) => {
   next();
 };
 
+// RUTA GET / (Obtener productos con filtros, paginación y ordenamiento)
 ProductsRouter.get('/', async (req, res, next) => {
   try {
-    // 1. Usar el método .find() del Modelo para obtener todos los documentos
-    // .find({}) sin un objeto de consulta devuelve todos los documentos
-    // .find() es asíncrono y retorna una Promise.
-    const productos = await Producto.find({}); // Puedes añadir criterios aquí, ej. { activo: true }
+    const { 
+      category, 
+      price_min, 
+      price_max, 
+      search,         
+      sort,           
+      page = 1,       
+      limit = 10      
+    } = req.query;
 
-    // 2. Enviar la lista de productos como respuesta JSON
-    res.status(200).json(productos);
+    let queryFilters = {
+      isAvailable: true 
+    };
+
+    if (category) {
+      queryFilters.category = category;
+    }
+    if (price_min) {
+      queryFilters.price = { ...queryFilters.price, $gte: Number(price_min) };
+    }
+    if (price_max) {
+      queryFilters.price = { ...queryFilters.price, $lte: Number(price_max) };
+    }
+
+    if (search) {
+      queryFilters.$text = { $search: search };
+    }
+    
+    let query = Producto.find(queryFilters);
+
+    if (sort) {
+      query = query.sort(sort);
+    }
+
+    const skip = (Number(page) - 1) * Number(limit);
+    query = query.skip(skip).limit(Number(limit));
+    
+    query = query.populate('category');
+
+    const productos = await query;
+    
+    const totalProducts = await Producto.countDocuments(queryFilters);
+
+    res.status(200).json({
+      totalProducts,
+      totalPages: Math.ceil(totalProducts / limit),
+      currentPage: Number(page),
+      products: productos
+    });
 
   } catch (error) {
     console.error('Error al obtener productos:', error.message);
-    next(error); // Pasa el error al middleware de errores
+    next(error); 
   }
 });
 
-ProductsRouter.post('/',validateProduct, async (req, res, next) => {
+// RUTA POST / (Crear producto)
+ProductsRouter.post('/', validateProduct, async (req, res, next) => {
   try {
-    // 1. Obtener los datos del nuevo usuario del cuerpo de la solicitud (req.body)
-    // express.json() ya parseó el JSON del cliente y lo puso en req.body
     const datosNuevoProducto = req.body;
     console.log('Datos recibidos para crear producto:', datosNuevoProducto);
+    
     const categoriaExiste = await Category.findById(datosNuevoProducto.category);
     if (!categoriaExiste) {
       const error = new Error('Categoría no encontrada. No se puede crear el producto.');
@@ -58,80 +102,63 @@ ProductsRouter.post('/',validateProduct, async (req, res, next) => {
       return next(error);
     }
 
-    // 2. Crear una nueva instancia del Modelo Producto con los datos recibidos
-    // Mongoose automáticamente valida estos datos contra el esquema 'productoSchema'
     const nuevoProducto = new Producto(datosNuevoProducto);
-
-    // 3. Guardar el nuevo producto en la base de datos.
-    // .save() es un método asíncrono que retorna una Promise. Usamos 'await'.
     const productoGuardado = await nuevoProducto.save();
 
-    // 4. Enviar una respuesta al cliente
-    // Código de estado 201 significa "Created" (Recurso Creado)
     res.status(201).json({
       mensaje: 'Producto creado con éxito',
-      producto: productoGuardado // Enviamos el documento completo con el _id generado por MongoDB
+      producto: productoGuardado 
     });
  
   } catch (error) {
-    // Si ocurre un error (ej. validación fallida, email duplicado), lo pasamos al middleware de errores
     console.error('Error al crear producto:', error.message);
-    error.status = 400; // Generalmente, un error de validación es un Bad Request (400)
-    next(error);
-  }
-});
-ProductsRouter.get('/:id', async (req, res, next) => {
-  try {
-    // 1. Obtener el ID del usuario de los parámetros de la URL (req.params)
-    const productoId = req.params.id;
-    console.log('Buscando usuario con ID:', productoId);
- 
-    // 2. Usar el método .findById() del Modelo para buscar por _id
-    const producto = await Producto.findById(productoId);
- 
-    // 3. Verificar si el usuario fue encontrado
-    if (!producto) {
-      // Si no se encuentra, creamos y pasamos un error 404 (Not Found)
-      const error = new Error('Producto no encontrado');
-      error.status = 404;
-      return next(error); // Importante: 'return' para no ejecutar lo siguiente
-    }
- 
-    // 4. Enviar el usuario encontrado como respuesta JSON
-    res.status(200).json(producto);
- 
-  } catch (error) {
-    // Si el formato del ID es inválido (ej. no es un ObjectId válido), Mongoose lanza un error
-    console.error('Error al buscar producto por ID:', error.message);
-    error.status = 400; // Generalmente, un ID malformado es un Bad Request (400)
+    error.status = 400; 
     next(error);
   }
 });
 
+// RUTA GET /:id (Obtener producto por ID)
+ProductsRouter.get('/:id', async (req, res, next) => {
+  try {
+    const productoId = req.params.id;
+    console.log('Buscando producto con ID:', productoId);
+ 
+    const producto = await Producto.findById(productoId).populate('category');
+ 
+    if (!producto || !producto.isAvailable) { 
+      const error = new Error('Producto no encontrado');
+      error.status = 404;
+      return next(error); 
+    }
+ 
+    res.status(200).json(producto);
+ 
+  } catch (error) {
+    console.error('Error al buscar producto por ID:', error.message);
+    error.status = 400; 
+    next(error);
+  }
+});
+
+// RUTA PUT /:id (Actualizar producto)
 ProductsRouter.put('/:id', validateProduct, async (req, res, next) => {
   try {
     const productoId = req.params.id;
     const datosActualizados = req.body;
     console.log(`Actualizando producto con ID ${productoId} con datos:`, datosActualizados);
 
-    // 1. Usar findByIdAndUpdate para encontrar el documento por ID y actualizarlo
-    // Argumentos: (id, { $set: datosAActualizar }, opciones)
-    // new: true -> devuelve el documento modificado (por defecto devuelve el original)
-    // runValidators: true -> ejecuta las validaciones del esquema antes de actualizar
     const productoActualizado = await Producto.findByIdAndUpdate(
       productoId,
-      datosActualizados, // Mongoose automáticamente usa $set para los campos provistos
-      { new: true, runValidators: true } // Opciones importantes
+      datosActualizados,
+      { new: true, runValidators: true } 
     );
 
-    // 2. Verificar si el producto fue encontrado y actualizado
     if (!productoActualizado) {
       const error = new Error('Producto no encontrado para actualizar');
       error.status = 404;
       return next(error);
     }
 
-    // 3. Enviar el producto actualizado como respuesta
     res.status(200).json({
       mensaje: 'Producto actualizado con éxito',
       producto: productoActualizado
@@ -139,39 +166,37 @@ ProductsRouter.put('/:id', validateProduct, async (req, res, next) => {
  
   } catch (error) {
     console.error('Error al actualizar producto:', error.message);
-    // Si el ID es inválido o la validación falla
     error.status = 400;
     next(error);
   }
 });
 
-
+// RUTA DELETE /:id 
 ProductsRouter.delete('/:id', async (req, res, next) => {
   try {
     const productoId = req.params.id;
-    console.log('Eliminando producto con ID:', productoId);
+    console.log('Desactivando (eliminación lógica) producto con ID:', productoId);
 
-    // 1. Usar findByIdAndDelete para encontrar y eliminar el documento
-    const productoEliminado = await Producto.findByIdAndDelete(productoId);
+    const productoEliminado = await Producto.findByIdAndUpdate(
+      productoId,
+      { isAvailable: false },
+      { new: true } 
+    );
 
-    // 2. Verificar si el producto fue encontrado y eliminado
     if (!productoEliminado) {
       const error = new Error('Producto no encontrado para eliminar');
       error.status = 404;
       return next(error);
     }
  
-    // 3. Enviar una respuesta de éxito (204 No Content es común para DELETE sin cuerpo)
-    // O 200 OK con un mensaje.
     res.status(200).json({
-      mensaje: 'Producto eliminado con éxito',
-      producto: productoEliminado // Opcional: devolver el producto eliminado
+      mensaje: 'Producto eliminado (lógicamente) con éxito',
+      producto: productoEliminado
     });
-    // Si no necesitas devolver el producto eliminado, puedes usar res.status(204).send();
 
   } catch (error) {
-    console.error('Error al eliminar producto|:', error.message);
-    error.status = 400; // Puede ser por un ID malformado
+    console.error('Error al eliminar producto:', error.message);
+    error.status = 400; 
     next(error);
   }
 });
