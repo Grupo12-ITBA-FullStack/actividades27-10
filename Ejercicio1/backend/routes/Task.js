@@ -1,13 +1,15 @@
 const express = require('express');
 const router = express.Router();
-const taskController = require('../controllers/task.controller');
+const {
+  getTasks,
+  createTask,
+  getTaskById,
+  updateTask,
+  deleteTask,
+} = require('../controllers/task.controller'); // [cite: 126]
 
-// Mapeo de operaciones CRUDL a endpoints
-router.post('/', taskController.createTask);
-router.get('/', taskController.listTasks); 
-router.get('/search', taskController.searchTasks);
-router.get('/:id', taskController.getTask);
-router.put('/:id', taskController.updateTask);
-router.delete('/:id', taskController.deleteTask);
+// Define las rutas
+router.route('/').get(getTasks).post(createTask);
+router.route('/:id').get(getTaskById).put(updateTask).delete(deleteTask);
 
 module.exports = router;

@@ -1,104 +1,125 @@
 const Task = require('../models/Task');
+const Project = require('../models/Project');
 
-// Implementa: Create: Crear nuevos registros con validación
+// @desc    Listar Tareas (con filtros, sort, paginación)
+// @route   GET /api/tasks
+exports.getTasks = async (req, res, next) => {
+  try {
+    const { project, assignedTo, status, priority, search, sort, page = 1, limit = 10 } = req.query;
+    let queryFilters = {}; 
+
+    // Filtrado por múltiples criterios 
+    if (project) queryFilters.project = project;
+    if (assignedTo) queryFilters.assignedTo = assignedTo;
+    if (status) queryFilters.status = status;
+    if (priority) queryFilters.priority = priority;
+    if (search) queryFilters.$text = { $search: search }; 
+
+    let query = Task.find(queryFilters)
+      .populate('project', 'name') 
+      .populate('assignedTo', 'name email'); 
+
+    if (sort) {
+      query = query.sort(sort); 
+    }
+
+    const skip = (Number(page) - 1) * Number(limit);
+    query = query.skip(skip).limit(Number(limit)); 
+
+    const tasks = await query;
+    const totalTasks = await Task.countDocuments(queryFilters);
+
+    res.status(200).json({
+      totalTasks,
+      totalPages: Math.ceil(totalTasks / limit),
+      currentPage: Number(page),
+      tasks,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Crear Tarea
+// @route   POST /api/tasks
 exports.createTask = async (req, res, next) => {
-    try {
-        const newTask = await Task.create(req.body);
-        res.status(201).json(newTask);
-    } catch (error) {
-        next(error); 
+  try {
+    const { title, project } = req.body;
+    if (!title || !project) {
+      const error = new Error('Faltan campos obligatorios: title y project');
+      error.status = 400;
+      return next(error);
     }
+    const projectExists = await Project.findById(project);
+    if (!projectExists) {
+      const error = new Error('El proyecto asociado no existe');
+      error.status = 404;
+      return next(error);
+    }
+    
+    const newTask = new Task(req.body);
+    const savedTask = await newTask.save(); 
+    res.status(201).json(savedTask);
+  } catch (error) {
+    next(error);
+  }
 };
 
-// Implementa: Read: Obtener registros individuales por ID y Populate
-exports.getTask = async (req, res, next) => {
-    try {
-        const task = await Task.findById(req.params.id)
-            .populate('project', 'name status') 
-            .populate('assignedTo', 'username email'); 
-            
-        if (!task) return res.status(404).json({ message: 'Tarea no encontrada.' });
-        res.json(task);
-    } catch (error) {
-        next(error); 
+// @desc    Obtener una Tarea por ID (con populate)
+// @route   GET /api/tasks/:id
+exports.getTaskById = async (req, res, next) => {
+  try {
+    const task = await Task.findById(req.params.id)
+      .populate('project', 'name') 
+      .populate('assignedTo', 'name email') 
+      .populate('dependencies', 'title status'); 
+      
+    if (!task) {
+      const error = new Error('Tarea no encontrada');
+      error.status = 404;
+      return next(error);
     }
+    res.status(200).json(task); 
+  } catch (error) {
+    next(error);
+  }
 };
 
-// Implementa: Update: Actualizar registros parcial o completamente con validación
+// @desc    Actualizar Tarea
+// @route   PUT /api/tasks/:id
 exports.updateTask = async (req, res, next) => {
-    try {
-        const task = await Task.findByIdAndUpdate(
-            req.params.id,
-            req.body,
-            { new: true, runValidators: true } // new: devuelve el doc actualizado, runValidators: ejecuta validaciones
-        );
-        
-        if (!task) return res.status(404).json({ message: 'Tarea no encontrada.' });
-        res.json(task);
-    } catch (error) {
-        next(error); 
+  try {
+    const updatedTask = await Task.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
+    if (!updatedTask) {
+      const error = new Error('Tarea no encontrada');
+      error.status = 404;
+      return next(error);
     }
+    res.status(200).json(updatedTask); 
+  } catch (error) {
+    next(error);
+  }
 };
 
-// Implementa: Delete: Eliminar registros (físico)
+// Eliminar (Lógico) Tarea
+// DELETE /api/tasks/:id
 exports.deleteTask = async (req, res, next) => {
-    try {
-        const task = await Task.findByIdAndDelete(req.params.id);
-        if (!task) return res.status(404).json({ message: 'Tarea no encontrada.' });
-        res.status(204).send(); // 204 No Content
-    } catch (error) {
-        next(error);
+  try {
+    const deletedTask = await Task.findByIdAndUpdate(
+      req.params.id,
+      { isActive: false },
+      { new: true }
+    );
+    if (!deletedTask) {
+      const error = new Error('Tarea no encontrada');
+      error.status = 404;
+      return next(error);
     }
-};
-
-// Implementa: List: Listar con Paginación, Filtros y Ordenamiento
-exports.listTasks = async (req, res, next) => {
-    try {
-        const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc', status, priority, project, assignedTo } = req.query;
-
-        // 1. Filtrado por múltiples criterios
-        const filter = {};
-        if (status) filter.status = status;
-        if (priority) filter.priority = priority;
-        if (project) filter.project = project; 
-        if (assignedTo) filter.assignedTo = assignedTo;
-
-        // 2. Ordenamiento
-        const sort = {};
-        sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
-
-        // 3. Consulta con Paginación y Populate
-        const tasks = await Task.find(filter)
-            .sort(sort)
-            .skip((parseInt(page) - 1) * parseInt(limit))
-            .limit(parseInt(limit))
-            .populate('assignedTo', 'username');
-
-        const total = await Task.countDocuments(filter);
-
-        res.json({
-            data: tasks,
-            total,
-            page: parseInt(page),
-            limit: parseInt(limit)
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-// Funcionalidad Adicional: Búsqueda con texto completo
-exports.searchTasks = async (req, res, next) => {
-    try {
-        const { query } = req.query;
-        if (!query) return res.status(400).json({ message: 'El parámetro "query" es requerido para la búsqueda.' });
-        
-        const tasks = await Task.find({ $text: { $search: query } })
-            .sort({ score: { $meta: 'textScore' } }) // Opcional: ordenar por relevancia
-            .populate('assignedTo', 'username');
-
-        res.json(tasks);
-    } catch (error) {
-        next(error);
-    }
+    res.status(200).json({ mensaje: 'Tarea eliminada lógicamente' });
+  } catch (error) {
+    next(error);
+  }
 };
